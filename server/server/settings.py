@@ -77,7 +77,7 @@ DATABASES = {
 # ============================================
 import mongoengine
 MONGODB_NAME = os.getenv('MONGODB_NAME', 'proctorai')
-MONGODB_URI = os.getenv('MONGODB_URI', '').strip()
+MONGODB_URI = os.getenv('MONGODB_URI', '').strip(' "\'')
 
 # Fallback for local dev if MONGODB_URI is missing
 if not MONGODB_URI:
