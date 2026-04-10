@@ -313,3 +313,16 @@ input, textarea, select {
     gap: var(--space-6);
   }
 }
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-6);
+}
+
+@media (max-width: 1024px) {
+  .analytics-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}

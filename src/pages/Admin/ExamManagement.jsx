@@ -218,22 +218,22 @@ const ExamManagement = () => {
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: 'var(--space-4)', borderBottom: '1px solid var(--border-primary)' }}>
+        <div className="exam-manage__tabs">
           <button 
             onClick={() => setActiveTab('questions')} 
-            style={{ padding: 'var(--space-3) var(--space-4)', background: 'transparent', border: 'none', color: activeTab === 'questions' ? 'var(--primary-400)' : 'var(--text-secondary)', borderBottom: activeTab === 'questions' ? '2px solid var(--primary-400)' : '2px solid transparent', fontWeight: 'var(--font-semibold)' }}
+            className={`exam-manage__tab-btn ${activeTab === 'questions' ? 'exam-manage__tab-btn--active' : ''}`}
           >
             Questions
           </button>
           <button 
             onClick={() => setActiveTab('candidates')} 
-            style={{ padding: 'var(--space-3) var(--space-4)', background: 'transparent', border: 'none', color: activeTab === 'candidates' ? 'var(--primary-400)' : 'var(--text-secondary)', borderBottom: activeTab === 'candidates' ? '2px solid var(--primary-400)' : '2px solid transparent', fontWeight: 'var(--font-semibold)' }}
+            className={`exam-manage__tab-btn ${activeTab === 'candidates' ? 'exam-manage__tab-btn--active' : ''}`}
           >
             Candidates & Results
           </button>
           <button 
             onClick={() => setActiveTab('settings')} 
-            style={{ padding: 'var(--space-3) var(--space-4)', background: 'transparent', border: 'none', color: activeTab === 'settings' ? 'var(--primary-400)' : 'var(--text-secondary)', borderBottom: activeTab === 'settings' ? '2px solid var(--primary-400)' : '2px solid transparent', fontWeight: 'var(--font-semibold)' }}
+            className={`exam-manage__tab-btn ${activeTab === 'settings' ? 'exam-manage__tab-btn--active' : ''}`}
           >
             Security & Settings
           </button>
@@ -309,7 +309,7 @@ const ExamManagement = () => {
 
         {activeTab === 'candidates' && (
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-bold)' }}>Attended Candidates</h3>
               <Button variant="ghost" size="sm" icon={Search} onClick={() => loadSessions(selectedExam.id)}>Refresh List</Button>
             </div>
@@ -319,8 +319,8 @@ const ExamManagement = () => {
             ) : examSessions.length === 0 ? (
                <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-tertiary)' }}>No candidates have attended this exam yet.</div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+              <div className="table-container">
+                <table>
                   <thead>
                     <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-primary)' }}>
                       <th style={{ padding: 'var(--space-3)' }}>Candidate</th>
@@ -446,8 +446,8 @@ const ExamManagement = () => {
   // --- END DETAIL VIEW ---
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+    <div className="exam-manage">
+      <div className="exam-manage__header">
         <div>
           <h2 style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--font-bold)', marginBottom: 4 }}>Exam Management</h2>
           <p style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>Create, manage, and monitor examinations</p>

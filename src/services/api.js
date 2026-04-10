@@ -9,7 +9,7 @@
  */
 import tokenStore from './tokenStore';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const API_BASE =  import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 const MAX_RETRIES = 1;
 
 class ApiError extends Error {

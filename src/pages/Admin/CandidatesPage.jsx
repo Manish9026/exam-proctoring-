@@ -4,6 +4,7 @@ import { Users, Search, Filter, Mail, Eye, Loader } from 'lucide-react';
 import { Badge, Button, Input, Card } from '../../components/ui';
 import { examService } from '../../services';
 import { toast } from 'react-hot-toast';
+import './ExamManagement.css';
 
 const statusColors = { active: 'success', flagged: 'warning', suspended: 'danger' };
 const getRiskColor = (r) => r >= 60 ? 'var(--danger-400)' : r >= 30 ? 'var(--warning-400)' : 'var(--accent-400)';
@@ -39,12 +40,7 @@ const CandidateHistoryDrawer = ({ candidate, onClose, onRefresh }) => {
   };
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 450, background: 'var(--bg-card)',
-      borderLeft: '1px solid var(--border-primary)', zIndex: 1000, padding: 'var(--space-6)',
-      display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', boxShadow: 'var(--shadow-2xl)',
-      backdropFilter: 'blur(16px)',
-    }}>
+    <div className="history-drawer">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-bold)' }}>{candidate.name}'s History</h3>
         <Button variant="ghost" size="sm" onClick={onClose}>&times;</Button>
@@ -136,20 +132,12 @@ const CandidatesPage = () => {
       </div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <div style={{
-          overflow: 'auto', borderRadius: 'var(--radius-xl)', border: '1px solid var(--border-primary)',
-          background: 'var(--bg-card)', backdropFilter: 'blur(12px)',
-        }}>
+        <div className="table-container">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
             <thead>
               <tr>
                 {['Candidate', 'Email', 'Exams Taken', 'Avg Risk', 'Status', 'Last Exam', 'Actions'].map(h => (
-                  <th key={h} style={{
-                    textAlign: 'left', padding: 'var(--space-4)', fontWeight: 'var(--font-semibold)',
-                    fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                    color: 'var(--text-muted)', borderBottom: '1px solid var(--border-primary)',
-                    background: 'var(--bg-tertiary)', whiteSpace: 'nowrap',
-                  }}>{h}</th>
+                  <th key={h}>{h}</th>
                 ))}
               </tr>
             </thead>

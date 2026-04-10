@@ -1,0 +1,121 @@
+/* ---- Exam Management Page Styles ---- */
+.exam-manage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.exam-manage__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.exam-manage__tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--border-primary);
+  overflow-x: auto;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.exam-manage__tab-btn {
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+
+.exam-manage__tab-btn--active {
+  color: var(--primary-400);
+  border-bottom-color: var(--primary-400);
+}
+
+.exam-manage__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: var(--space-5);
+}
+
+.form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.table-container {
+  overflow-x: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-xl);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  padding: var(--space-4);
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+  white-space: nowrap;
+}
+
+td {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: var(--text-sm);
+}
+
+/* Modal and Drawer Content */
+.history-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 450px;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-primary);
+  z-index: 1000;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  box-shadow: var(--shadow-2xl);
+  backdrop-filter: blur(16px);
+  transition: transform 0.3s ease;
+}
+
+@media (max-width: 1024px) {
+  .exam-manage__grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .exam-manage__grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  
+  .history-drawer {
+    width: 100% !important;
+  }
+}

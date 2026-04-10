@@ -78,7 +78,7 @@ const AnalyticsPage = () => {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 'var(--space-6)' }}>
+      <div className="analytics-grid">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <Card>
             <Card.Header><Card.Title subtitle="Monthly exam and candidate trends">Monthly Overview</Card.Title></Card.Header>

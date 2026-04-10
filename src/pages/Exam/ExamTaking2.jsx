@@ -6,7 +6,7 @@ import useNetworkQueue from '../../hooks/useNetworkQueue';
 
 import { 
   Clock, ChevronLeft, ChevronRight, Flag, Send, AlertTriangle, 
-  Camera, Shield, Brain, Wifi, Monitor, X, ShieldAlert 
+  Camera, Shield, Brain, Wifi, Monitor, X 
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button, Badge, Card } from '../../components/ui';
@@ -14,28 +14,29 @@ import { examService, proctorService } from '../../services';
 import './Exam.css';
 
 const ExamTaking = () => {
-  const navigate = useNavigate();
+  const DEBUG_MODE = true; // Set to true to enable on-screen dev logs and disable anti-cheat blocks
+  const [debugLogs, setDebugLogs] = useState([]);
+
+  const addDebugLog = useCallback((msg) => {
+    if (!DEBUG_MODE) return;
+    setDebugLogs(prev => {
+      const newLogs = [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`];
+      return newLogs.slice(-15); // keep last 15
+    });
+  }, [DEBUG_MODE]);
+
+  const [cameraStream, setCameraStream] = useState(null);
   const { examId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
+  const webcamRef = useRef(null);
+
+  // Use the new highly scalable Network Queue hook pointing to the Django REST endpoint
+  const initialSessionId = location.state?.sessionId || null;
   const { sendFrame, isConnected } = useNetworkQueue(); 
 
-  // --- 1. REFS (Top Level) ---
-  const webcamRef = useRef(null);
-  const canvasRef = useRef(null);
-  const riskScoreRef = useRef(0);
-  const seenReasonsRef = useRef(new Set()); 
-  const tickCount = useRef(0);
-  const countdownTimerRef = useRef(null);
-  const audioLevelRef = useRef(0);
-  const audioContextRef = useRef(null);
-  const audioSnapshotRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const smoothBoxesRef = useRef({});
-  const lastProcessedTick = useRef(0);
-
-  // --- 2. STATE ---
-  const initialSessionId = location.state?.sessionId || null;
   const initialExamData = location.state?.examData || null;
+
   const [exam, setExam] = useState(initialExamData);
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -44,23 +45,30 @@ const ExamTaking = () => {
   const [flagged, setFlagged] = useState(new Set());
   const [timeLeft, setTimeLeft] = useState(3600);
   const [riskScore, setRiskScore] = useState(0);
+  const riskScoreRef = useRef(0); // For loop access without stale state
   const [lastSync, setLastSync] = useState(Date.now());
   const [canvasDetections, setCanvasDetections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [terminalStatus, setTerminalStatus] = useState(null);
+  const [terminalStatus, setTerminalStatus] = useState(null); // 'terminated' | 'time_out'
+  const terminalStatusRef = useRef(null);
   const [countdown, setCountdown] = useState(15);
   const [latestViolation, setLatestViolation] = useState(null);
+  const seenReasonsRef = useRef(new Set()); 
+  
+  // Mobile & Camera States
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
-  const [cameraMode, setCameraMode] = useState('user'); 
+  const [cameraMode, setCameraMode] = useState('user'); // 'user' (front) or 'environment' (back)
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
 
-  // --- 3. EFFECTS ---
+  const tickCount = useRef(0);
+  const countdownTimerRef = useRef(null);
 
-  // Initialize Exam & Devices
+  // 1. Initialize Exam & Devices
   useEffect(() => {
     const init = async () => {
       try {
+        // Check for multiple cameras
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(d => d.kind === 'videoinput');
         setHasMultipleCameras(videoDevices.length > 1);
@@ -70,116 +78,148 @@ const ExamTaking = () => {
           ex = await examService.getCandidateExam(examId);
           setExam(ex);
         }
-        const questionsWithIds = (ex.questions || []).map((q, idx) => ({
-          ...q,
-          id: q.id || `q-${idx}`,
-          text: q.question_text // Map backend field to frontend 'text'
-        }));
-        setQuestions(questionsWithIds);
+        setQuestions(ex.questions || []);
         setTimeLeft((ex.duration_minutes || 60) * 60);
 
-        let sess = initialSessionId ? await examService.getSession(initialSessionId) : await examService.startExam(examId);
+        let sess;
+        if (initialSessionId) {
+          sess = await examService.getSession(initialSessionId);
+        } else {
+          sess = await examService.startExam(examId);
+        }
         setSession(sess);
         
-        if (sess.answers?.length > 0) {
+        // Restore previous answers if any
+        if (sess.answers && sess.answers.length > 0) {
           const restored = {};
           sess.answers.forEach(a => {
-            const qObj = questionsWithIds[a.question_index];
+            const qObj = ex.questions[a.question_index];
             if (qObj) restored[qObj.id] = a.selected_answer;
           });
           setAnswers(restored);
         }
+
         setLoading(false);
-      } catch (err) { navigate('/candidate'); }
+      } catch (err) {
+        console.error('Init failed:', err);
+        navigate('/candidate');
+      }
     };
     init();
+
     const handleResize = () => setSidebarOpen(window.innerWidth > 1024);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [examId, navigate]);
+  }, [examId]);
 
-  // Audio Monitor System
+  // Handle auto-termination countdown
   useEffect(() => {
-    let micStream = null;
-    let isMounted = true;
-    let animationFrame = null;
+    terminalStatusRef.current = terminalStatus;
+    if (terminalStatus) {
+      countdownTimerRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownTimerRef.current);
+            navigate('/candidate');
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(countdownTimerRef.current);
+  }, [terminalStatus, navigate]);
+
+  const audioLevelRef = useRef(0);
+  const audioContextRef = useRef(null);
+  const audioSnapshotRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+
+  // Initialize Audio Monitor
+  useEffect(() => {
+    let micStream;
+    let analyzer;
+    let dataArray;
+    let animationFrame;
 
     const startAudioMonitor = async () => {
+      let isMounted = true;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (!isMounted) return;
-
+        
+        // --- 1. Audio Level Monitoring ---
         audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
         const source = audioContextRef.current.createMediaStreamSource(micStream);
-        const analyzer = audioContextRef.current.createAnalyser();
+        analyzer = audioContextRef.current.createAnalyser();
         analyzer.fftSize = 256;
         source.connect(analyzer);
-        const dataArray = new Uint8Array(analyzer.frequencyBinCount);
+        dataArray = new Uint8Array(analyzer.frequencyBinCount);
 
         const checkAudio = () => {
           if (!isMounted) return;
           analyzer.getByteFrequencyData(dataArray);
-          let sum = 0, speechSum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-             sum += dataArray[i];
-             if (i >= 2 && i <= 18) speechSum += dataArray[i];
-          }
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
           const average = sum / dataArray.length;
           audioLevelRef.current = Math.round(average);
-          const ratio = average > 5 ? (speechSum / 17) / average : 0;
-          audioSnapshotRef.current_isSpeech = ratio > 1.2;
           animationFrame = requestAnimationFrame(checkAudio);
         };
         checkAudio();
 
+        // --- 2. Forensic Audio Buffering (15-Second Rolling Window) ---
         let audioSegments = [];
-        const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus') ? 'audio/ogg;codecs=opus' : 'audio/webm;codecs=opus';
+        const mimeType = MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')
+          ? 'audio/ogg;codecs=opus'
+          : 'audio/webm;codecs=opus';
+
         const startNewCycle = () => {
           if (!isMounted) return;
+          
           const recorder = new MediaRecorder(micStream, { mimeType });
           const internalChunks = [];
-          recorder.ondataavailable = (e) => { if (e.data.size > 0) internalChunks.push(e.data); };
+          
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) internalChunks.push(e.data);
+          };
+          
           recorder.onstop = () => {
             if (!isMounted) return;
             const segmentBlob = new Blob(internalChunks, { type: mimeType });
             audioSegments.push(segmentBlob);
-            if (audioSegments.length > 3) audioSegments.shift();
+            if (audioSegments.length > 3) audioSegments.shift(); // Keep last 15s (3 * 5s)
+            
+            // Periodically prepare the combined blob for the telemetry loop
             const combinedBlob = new Blob(audioSegments, { type: mimeType });
             const reader = new FileReader();
             reader.onloadend = () => { audioSnapshotRef.current = reader.result; };
             reader.readAsDataURL(combinedBlob);
+
             setTimeout(startNewCycle, 100);
           };
+
           mediaRecorderRef.current = recorder;
           recorder.start();
-          setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 5000); 
+          setTimeout(() => {
+            if (recorder.state === 'recording') recorder.stop();
+          }, 5000); 
         };
+
         startNewCycle();
-      } catch (err) { }
+
+      } catch (err) {
+        console.warn("Mic access denied or unavailable", err);
+      }
+      return () => { isMounted = false; };
     };
-    startAudioMonitor();
+
+    const cleanupMonitor = startAudioMonitor();
     return () => {
-       isMounted = false;
+       cleanupMonitor.then(cleanup => cleanup && cleanup());
        if (micStream) micStream.getTracks().forEach(t => t.stop());
        if (animationFrame) cancelAnimationFrame(animationFrame);
        if (audioContextRef.current) audioContextRef.current.close();
     };
   }, []);
-
-  // 1.5 AUTO-SAVE & TERMINATION HANDLER
-  useEffect(() => {
-    if (terminalStatus) {
-      examService.submitExam(session?.id).catch(() => {});
-      const timer = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) { clearInterval(timer); navigate('/candidate'); }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [terminalStatus, navigate, session]);
-
 
   // 2. Timer
   useEffect(() => {
@@ -216,6 +256,8 @@ const ExamTaking = () => {
 
   // 4. Behavioral Monitoring (Keyboard, Tab Switch, Focus)
   useEffect(() => {
+    if (DEBUG_MODE) return; // Disable anti-cheat behaviors in developer mode
+
     const handleVis = () => { if (document.hidden) reportBehavior('tab_switch', 'critical', 'Tab switch / Minimized window', 2000); };
     const handleBlur = () => { reportBehavior('tab_switch', 'critical', 'Navigation out of exam window', 2000); };
     const handleKey = (e) => {
@@ -238,154 +280,115 @@ const ExamTaking = () => {
       document.removeEventListener('keydown', handleKey);
       document.removeEventListener('contextmenu', e => e.preventDefault());
     };
-  }, [reportBehavior]);
+  }, [reportBehavior, DEBUG_MODE]);
 
-  // 4. SECURITY LAYER (Industry Level Enforcement)
-  useEffect(() => {
-    const handleContext = (e) => e.preventDefault();
-    const handleCopy = (e) => { e.preventDefault(); reportBehavior('copy_paste', 'medium', 'Copy action blocked.'); };
-    const handlePaste = (e) => { e.preventDefault(); reportBehavior('copy_paste', 'medium', 'Paste action blocked.'); };
-    const handleKey = (e) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C'))) {
-        e.preventDefault();
-        reportBehavior('devtools', 'high', 'Attempted to open DevTools.');
-      }
-      if (e.altKey && e.key === 'Tab') {
-        reportBehavior('tab_switch', 'critical', 'Attempted window switch (Alt+Tab).');
-      }
-      if (e.key === 'PrintScreen') {
-        reportBehavior('devtools', 'medium', 'Screen capture attempted.');
-      }
-    };
-    const handleBlur = () => {
-       if (!terminalStatus) {
-         reportBehavior('tab_switch', 'high', 'Security Alert: Left exam window!');
-       }
-    };
-    
-    window.addEventListener('contextmenu', handleContext);
-    window.addEventListener('copy', handleCopy);
-    window.addEventListener('paste', handlePaste);
-    window.addEventListener('keydown', handleKey);
-    window.addEventListener('blur', handleBlur);
-    
-    // Auto-enter Fullscreen
-    const enterFull = () => {
-      const doc = document.documentElement;
-      if (doc.requestFullscreen) doc.requestFullscreen();
-    };
-    enterFull();
-
-    return () => {
-      window.removeEventListener('contextmenu', handleContext);
-      window.removeEventListener('copy', handleCopy);
-      window.removeEventListener('paste', handlePaste);
-      window.removeEventListener('keydown', handleKey);
-      window.removeEventListener('blur', handleBlur);
-    };
-  }, [reportBehavior, terminalStatus]);
+  const canvasRef = useRef(null);
 
   // 5. ASYNC ENTERPRISE AI LOOP (Server-Driven Visualization)
   useEffect(() => {
     let active = true;
 
     const captureLoop = async () => {
-      const START_DELAY = 10000; 
-      sendFrame(null, session?.id, 0, null, false).catch(() => {});
-      
-      await new Promise(r => setTimeout(r, START_DELAY));
-
-      tickCount.current = 0; 
-      let inFlight = 0;
-
-      while (active && !terminalStatus) {
-        // Higher concurrency for a 'Liquid' real-time feel
-        if (inFlight >= 3) {
-           await new Promise(r => setTimeout(r, 50));
-           continue;
-        }
-
-        if (webcamRef.current) {
+      console.info("[AI Engine] Capture loop initialized and looping.");
+      addDebugLog("Capture loop mounted.");
+      while (active && !terminalStatusRef.current) {
+        if (webcamRef.current && webcamRef.current.video) {
           const video = webcamRef.current.video;
           const canvas = canvasRef.current;
           
-          if (video && canvas) {
-             if (canvas.width !== video.videoWidth) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-             }
-          }
+          if (video.readyState >= 2 && video.videoWidth > 0) {
+              if (canvas && canvas.width !== video.videoWidth) {
+                 canvas.width = video.videoWidth;
+                 canvas.height = video.videoHeight;
+              }
 
-          // Smaller 400x300 image for 70% faster network transmission
-          const imageSrc = webcamRef.current.getScreenshot({ width: 400, height: 300, quality: 0.4 });
-          
-          if (imageSrc) {
-            inFlight++;
-            
-            // Non-blocking execution allows next frame to start while first one is processing
-            (async () => {
+              const imageSrc = webcamRef.current.getScreenshot({ width: 640, height: 480, quality: 0.5 });
+              
+              if (imageSrc) {
                 try {
-                    tickCount.current += 1;
-                    const cAudio = audioLevelRef.current || 0;
-                    const shouldSendAudio = (cAudio > 40) || (tickCount.current % 50 === 0);
-                    
-                    const response = await sendFrame(
-                      imageSrc, 
-                      session?.id, 
-                      cAudio,
-                      shouldSendAudio ? audioSnapshotRef.current : null, 
-                      audioSnapshotRef.current_isSpeech || false
-                    );
+                   tickCount.current += 1;
+                   const currentAudioLevel = audioLevelRef.current || 0;
+                   const shouldSendAudio = (currentAudioLevel > 40) || (tickCount.current % 50 === 0);
+                   
+                   addDebugLog(`Invoking API sendFrame for tick ${tickCount.current}...`);
+                   
+                   const response = await sendFrame(
+                     imageSrc, 
+                     session?.id || session?._id, 
+                     currentAudioLevel,
+                     shouldSendAudio ? audioSnapshotRef.current : null
+                   );
+                   
+                   addDebugLog(`API Response: ${JSON.stringify(response || {error: 'No response'})}`);
                   
                   if (response && response.risk_score !== undefined) {
-                    const newScore = response.risk_score;
-                    setRiskScore(newScore);
-                    riskScoreRef.current = newScore;
-                    setLastSync(Date.now());
+                      const newScore = response.risk_score;
+                      setRiskScore(newScore);
+                      riskScoreRef.current = newScore;
+                      setLastSync(Date.now());
 
-                    if (newScore >= 100) {
-                      setTerminalStatus('terminated');
-                      active = false;
-                    }
-                  }
-
-                  // Only update if this is the newest frame result
-                  if (response && response.tick >= lastProcessedTick.current) {
-                    lastProcessedTick.current = response.tick;
-                    if (response?.detections?.boxes) {
-                       setCanvasDetections(response.detections.boxes);
-                    }
-                  }
-
-                  if (response?.reasons?.length > 0) {
-                    response.reasons.forEach(reason => {
-                      const reasonKey = `${reason}_${Math.floor(Date.now() / 10000)}`;
-                      if (!seenReasonsRef.current.has(reasonKey)) {
-                        toast.error(reason, { id: reasonKey, duration: 5000, icon: '⚠️' });
-                        seenReasonsRef.current.add(reasonKey);
-                        setTimeout(() => seenReasonsRef.current.delete(reasonKey), 10000);
+                      if (newScore >= 100) {
+                        setTerminalStatus('terminated');
+                        active = false;
+                        break;
                       }
-                    });
+                   }
+
+                  if (response?.detections?.boxes) {
+                     setCanvasDetections(response.detections.boxes);
                   }
+                  
+                  if (response?.reasons?.length > 0) {
+                     response.reasons.forEach(reason => {
+                        const reasonKey = `${reason}_${Math.floor(Date.now() / 10000)}`; // unique per 10s
+                        if (!seenReasonsRef.current.has(reasonKey)) {
+                           toast.error(reason, { 
+                             id: reasonKey,
+                             duration: 5000,
+                             icon: '⚠️'
+                           });
+                           seenReasonsRef.current.add(reasonKey);
+                           setTimeout(() => seenReasonsRef.current.delete(reasonKey), 10000);
+                        }
+                     });
+                  }
+
+                   if (response?.status === 'terminated') {
+                     setTerminalStatus('terminated');
+                     active = false;
+                  }
+
                 } catch (err) {
+                  addDebugLog(`Transmission Catch ER: ${err.message || 'Unknown'}`);
                   if (err.status === 403 || err.status === 401) {
                     setTerminalStatus('terminated');
                     active = false;
                   }
-                  console.error("Pipeline lag/congestion:", err);
-                } finally {
-                  inFlight--;
                 }
-            })();
+              } else {
+                 addDebugLog("getScreenshot returned null.");
+              }
+          } else {
+             // addDebugLog(`Video waiting. ReadyState: ${video.readyState}`);
           }
+        } else {
+           // addDebugLog("Webcam ref not ready.");
         }
-        await new Promise(r => setTimeout(r, 150));
+        
+        // Final fallback safeguard
+        if (riskScoreRef.current >= 100) {
+           setTerminalStatus('terminated');
+           active = false;
+        }
+
+        await new Promise(r => setTimeout(r, 400));
       }
+      addDebugLog("Capture loop exited.");
     };
 
-    if (session) captureLoop();
+    if (session && !terminalStatusRef.current) captureLoop();
     return () => { active = false; };
-  }, [sendFrame, session, riskScore, terminalStatus]);
+  }, [sendFrame, session]);
 
   // Canvas Drawing Effect
   useEffect(() => {
@@ -394,31 +397,21 @@ const ExamTaking = () => {
      const ctx = canvas.getContext('2d');
      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-     // Detection frame was 400x300 (Optimized)
-     const scaleX = canvas.width / 400;
-     const scaleY = canvas.height / 300;
+     // Detection frame was 640x480
+     const scaleX = canvas.width / 640;
+     const scaleY = canvas.height / 480;
 
      canvasDetections.forEach(box => {
         let color = '#10b981'; // Green for normal
-        if (['PHONE', 'BOOK', 'LAPTOP', 'BAGGAGE', 'face_mismatch', 'ELECTRONICS'].includes(box.label)) {
+        if (['PHONE', 'BOOK', 'TABLET/LAPTOP', 'BAGGAGE'].includes(box.label)) {
            color = '#ef4444'; // Red for violations
         }
         
-        // 1. Coordinate Smoothing (Exponential Moving Average)
-        const boxId = box.label;
-        const prev = smoothBoxesRef.current[boxId] || box;
-        const alpha = 0.6; 
-        const sX = (box.x * alpha) + (prev.x * (1 - alpha));
-        const sY = (box.y * alpha) + (prev.y * (1 - alpha));
-        const sW = (box.w * alpha) + (prev.w * (1 - alpha));
-        const sH = (box.h * alpha) + (prev.h * (1 - alpha));
-        
-        smoothBoxesRef.current[boxId] = { x: sX, y: sY, w: sW, h: sH };
-
-        const x = sX * scaleX;
-        const y = sY * scaleY;
-        const w = sW * scaleX;
-        const h = sH * scaleY;
+        // Scale the box coordinates
+        const x = box.x * scaleX;
+        const y = box.y * scaleY;
+        const w = box.w * scaleX;
+        const h = box.h * scaleY;
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
@@ -430,11 +423,6 @@ const ExamTaking = () => {
         ctx.font = 'bold 14px Inter';
         ctx.shadowBlur = 0;
         ctx.fillText(box.label, x, y > 20 ? y - 5 : y + 20);
-     });
-     
-     const currentLabels = canvasDetections.map(d => d.label);
-     Object.keys(smoothBoxesRef.current).forEach(label => {
-        if (!currentLabels.includes(label)) delete smoothBoxesRef.current[label];
      });
   }, [canvasDetections]);
 
@@ -475,7 +463,9 @@ const ExamTaking = () => {
           is_flagged: isNowFlagged
         });
       }
-    } catch (e) {}
+    } catch (e) {
+       console.debug('Flag state sync deferred');
+    }
   };
 
   const handleSubmit = async () => {
@@ -516,25 +506,22 @@ const ExamTaking = () => {
 
   return (
     <div className={`exam-layout ${!sidebarOpen ? 'is-sidebar-collapsed' : ''}`}>
-      {/* 1. Industry-Level Real-time Security Notification Bar */}
-      <AnimatePresence>
-        {latestViolation && (
-          <motion.div 
-            initial={{ y: -100 }}
-            animate={{ y: 0 }}
-            exit={{ y: -100 }}
-            className={`exam-security-bar ${latestViolation.severity === 'critical' ? 'is-critical' : 'is-warning'}`}
-          >
-            <div className="exam-security-bar__content">
-              <ShieldAlert size={20} className="animate-pulse" />
-              <div className="exam-security-bar__text">
-                <strong>{latestViolation.type}:</strong> {latestViolation.description}
-              </div>
-            </div>
-            <div className="exam-security-bar__timer" />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      
+      {/* DEVELOPER HUD OVERLAY */}
+      {DEBUG_MODE && (
+        <div style={{
+          position: 'fixed', top: 10, left: 10, zIndex: 9999,
+          background: 'rgba(0,0,0,0.85)', color: '#0f0',
+          fontFamily: 'monospace', fontSize: '11px', padding: '10px',
+          borderRadius: '4px', maxWidth: '400px', pointerEvents: 'none'
+        }}>
+          <h4 style={{ margin: '0 0 5px 0', borderBottom: '1px solid #0f0' }}>AI ENGINE DEBUGGER</h4>
+          <div>Session ID: {session?.id || session?._id || 'null'}</div>
+          <div>Terminal Status: {String(terminalStatusRef.current)}</div>
+          <br/>
+          {debugLogs.map((lg, i) => <div key={i}>{lg}</div>)}
+        </div>
+      )}
 
       {/* Dynamic Security Overlays (Termination/Timeout) */}
       <AnimatePresence>
@@ -583,6 +570,22 @@ const ExamTaking = () => {
         {sidebarOpen ? <X size={20}/> : <Shield size={20}/>}
       </button>
 
+      {/* Persistent AI Surveillance Engine (Off-screen rendering) */}
+      <div style={{ position: 'fixed', right: -9999, bottom: -9999, width: 640, height: 480, pointerEvents: 'none' }}>
+        <Webcam 
+          ref={webcamRef} 
+          audio={false} 
+          screenshotFormat="image/jpeg" 
+          onUserMedia={(s) => setCameraStream(s)}
+          videoConstraints={{ 
+            width: 640, 
+            height: 480, 
+            facingMode: cameraMode 
+          }} 
+        />
+        <canvas ref={canvasRef} />
+      </div>
+
       {/* Main Examination Dashboard */}
       <main className="exam-main">
         <header className="exam-header">
@@ -627,48 +630,42 @@ const ExamTaking = () => {
         </AnimatePresence>
 
         {/* Question Area */}
-        <div className="exam-question-viewport">
+        <div className="exam-question-container">
           <AnimatePresence mode="wait">
             <motion.div 
-              key={q.id}
-              initial={{ opacity: 0, scale: 0.98, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 1.02, y: -10 }}
-              transition={{ duration: 0.3 }}
-              className="premium-question-card"
+              key={currentQ}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="exam-question-card"
             >
-              <div className="premium-question-card__header">
-                <div className="q-index-pill">Question {currentQ + 1}</div>
+              <div className="exam-question-card__header">
+                <Badge variant="neutral">Q{currentQ + 1} / {questions.length}</Badge>
                 <button 
-                  className={`flag-action ${flagged.has(q.id) ? 'is-active' : ''}`}
+                  className={`exam-question-flag ${flagged.has(q.id) ? 'is-flagged' : ''}`}
                   onClick={() => toggleFlag(q.id)}
                 >
-                  <Flag size={16} fill={flagged.has(q.id) ? "#f59e0b" : "none"} />
-                  {flagged.has(q.id) ? 'Flagged' : 'Review'}
+                  <Flag size={14} fill={flagged.has(q.id) ? "currentColor" : "none"} />
+                  <span>{flagged.has(q.id) ? 'Flagged' : 'Review'}</span>
                 </button>
               </div>
 
-              <h2 className="premium-question-text">{q.text}</h2>
+              <h2 className="exam-question-text">{q.text}</h2>
 
-              <div className="premium-options-grid">
-                {['A', 'B', 'C', 'D'].map((opt) => {
-                  const label = q[`option_${opt.toLowerCase()}`];
-                  if (!label) return null;
-                  const isSelected = answers[q.id] === opt;
-                  
-                  return (
+              <div className="exam-options-grid">
+                {['A', 'B', 'C', 'D'].map((opt) => (
+                  q[`option_${opt.toLowerCase()}`] && (
                     <motion.button
-                      key={`${q.id}-${opt}`}
-                      whileTap={{ scale: 0.99 }}
-                      className={`premium-option-item ${isSelected ? 'is-selected' : ''}`}
+                      key={opt}
+                      whileTap={{ scale: 0.98 }}
+                      className={`exam-option-card ${answers[q.id] === opt ? 'is-selected' : ''}`}
                       onClick={() => handleAnswer(q.id, opt)}
                     >
-                      <div className="premium-option-alpha">{opt}</div>
-                      <div className="premium-option-label">{label}</div>
-                      {isSelected && <motion.div layoutId="choice-glint" className="choice-glint" />}
+                      <span className="exam-option-indicator">{opt}</span>
+                      <span className="exam-option-content">{q[`option_${opt.toLowerCase()}`]}</span>
                     </motion.button>
-                  );
-                })}
+                  )
+                ))}
               </div>
             </motion.div>
           </AnimatePresence>
@@ -695,7 +692,7 @@ const ExamTaking = () => {
         </footer>
       </main>
 
-      {/* Surveillance Sidebar */}
+      {/* Surveillance Sidebar (Visual Monitor Only) */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.aside 
@@ -706,18 +703,31 @@ const ExamTaking = () => {
           >
             <section className="exam-proctor-module">
               <div className="exam-hud">
-                <Webcam 
-                  ref={webcamRef} 
-                  audio={false} 
-                  screenshotFormat="image/jpeg" 
-                  videoConstraints={{ 
-                    width: 320, 
-                    height: 240, 
-                    facingMode: cameraMode 
-                  }} 
-                  className="exam-hud__video"
+                {/* Mirror the main webcam feed visually using reactive stream */}
+                <video 
+                   autoPlay 
+                   muted 
+                   playsInline 
+                   ref={(el) => { if(el && cameraStream) el.srcObject = cameraStream; }}
+                   className="exam-hud__video"
+                   style={{ transform: cameraMode === 'user' ? 'scaleX(-1)' : 'none' }}
                 />
-                <canvas ref={canvasRef} className="exam-hud__canvas" />
+                <canvas 
+                  className="exam-hud__canvas" 
+                  ref={(el) => {
+                    if (el && canvasRef.current) {
+                      const ctx = el.getContext('2d');
+                      const render = () => {
+                         if (!canvasRef.current || canvasRef.current.width === 0) return;
+                         if (!el || el.width === 0) return;
+                         ctx.clearRect(0,0, el.width, el.height);
+                         ctx.drawImage(canvasRef.current, 0, 0, el.width, el.height);
+                         requestAnimationFrame(render);
+                      };
+                      render();
+                    }
+                  }}
+                />
                 
                 {hasMultipleCameras && (
                   <button className="camera-switch-btn" onClick={toggleCamera}>
