@@ -6,8 +6,9 @@ import useNetworkQueue from '../../hooks/useNetworkQueue';
 
 import { 
   Clock, ChevronLeft, ChevronRight, Flag, Send, AlertTriangle, 
-  Camera, Shield, Brain, Wifi, Monitor,X 
+  Camera, Shield, Brain, Wifi, Monitor, X 
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 import { Button, Badge, Card } from '../../components/ui';
 import { examService, proctorService } from '../../services';
 import './Exam.css';
@@ -32,6 +33,7 @@ const ExamTaking = () => {
   const [flagged, setFlagged] = useState(new Set());
   const [timeLeft, setTimeLeft] = useState(3600);
   const [riskScore, setRiskScore] = useState(0);
+  const riskScoreRef = useRef(0); // For loop access without stale state
   const [lastSync, setLastSync] = useState(Date.now());
   const [canvasDetections, setCanvasDetections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +41,7 @@ const ExamTaking = () => {
   const [terminalStatus, setTerminalStatus] = useState(null); // 'terminated' | 'time_out'
   const [countdown, setCountdown] = useState(15);
   const [latestViolation, setLatestViolation] = useState(null);
+  const seenReasonsRef = useRef(new Set()); 
   
   // Mobile & Camera States
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
@@ -299,22 +302,39 @@ const ExamTaking = () => {
                );
               
               if (response && response.risk_score !== undefined) {
-                  setRiskScore(response.risk_score);
+                  const newScore = response.risk_score;
+                  setRiskScore(newScore);
+                  riskScoreRef.current = newScore;
                   setLastSync(Date.now());
+
+                  if (newScore >= 100) {
+                    setTerminalStatus('terminated');
+                    active = false;
+                    break;
+                  }
                }
 
               if (response?.detections) {
-                 setCanvasDetections(response.detections.boxes || []);
+                 // Only update if findings were actually processed this tick
+                 if (response.detections.boxes) {
+                    setCanvasDetections(response.detections.boxes);
+                 }
               }
               
               if (response?.reasons?.length > 0) {
-                 const latestIssue = response.reasons[response.reasons.length - 1];
-                 setLatestViolation({ 
-                   type: 'ai_signal', 
-                   severity: 'medium', 
-                   description: `AI Warning: ${latestIssue}` 
+                 response.reasons.forEach(reason => {
+                    const reasonKey = `${reason}_${Math.floor(Date.now() / 10000)}`; // unique per 10s
+                    if (!seenReasonsRef.current.has(reasonKey)) {
+                       toast.error(reason, { 
+                         id: reasonKey,
+                         duration: 5000,
+                         icon: '⚠️'
+                       });
+                       seenReasonsRef.current.add(reasonKey);
+                       // Auto-cleanup ref to prevent bloat
+                       setTimeout(() => seenReasonsRef.current.delete(reasonKey), 10000);
+                    }
                  });
-                 setTimeout(() => setLatestViolation(null), 3000);
               }
 
               if (response?.status === 'terminated') {
@@ -333,12 +353,12 @@ const ExamTaking = () => {
           }
         }
         
-        if (riskScore >= 100) {
+        // Final fallback safeguard
+        if (riskScoreRef.current >= 100) {
            setTerminalStatus('terminated');
            active = false;
         }
 
-        // Reduced throttle for real-time responsiveness
         await new Promise(r => setTimeout(r, 400));
       }
     };
@@ -538,6 +558,18 @@ const ExamTaking = () => {
             animate={{ width: `${(answeredCount / questions.length) * 100}%` }}
           />
         </div>
+
+        {/* Global Warning Overlay for Critical Risk */}
+        <AnimatePresence>
+          {riskScore > 60 && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="exam-danger-overlay"
+            />
+          )}
+        </AnimatePresence>
 
         {/* Question Area */}
         <div className="exam-question-container">

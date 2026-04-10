@@ -668,3 +668,18 @@
 .exam-layout.is-sidebar-collapsed .exam-main {
   width: 100%;
 }
+
+/* Critical Danger Overlay */
+.exam-danger-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  box-shadow: inset 0 0 100px rgba(239, 68, 68, 0.4);
+  animation: danger-pulse 2s infinite alternate;
+}
+
+@keyframes danger-pulse {
+  from { box-shadow: inset 0 0 60px rgba(239, 68, 68, 0.2); }
+  to { box-shadow: inset 0 0 150px rgba(239, 68, 68, 0.6); }
+}
