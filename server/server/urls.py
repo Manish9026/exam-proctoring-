@@ -5,7 +5,13 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from django.http import JsonResponse
+
+def root_health(request):
+    return JsonResponse({"status": "online", "message": "ProctorAI Engine Live", "version": "1.0.0"})
+
 urlpatterns = [
+    path('', root_health),
     path('api/auth/', include('accounts.urls')),
     path('api/', include('exams.urls')),
     path('api/proctoring/', include('proctoring.urls')),
