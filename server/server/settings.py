@@ -89,12 +89,22 @@ if not MONGODB_URI:
     MONGODB_URI = 'mongodb://127.0.0.1:27017/proctorai'
 
 try:
-    mongoengine.connect(db=MONGODB_NAME, host=MONGODB_URI)
+    # Diagnostic print (Safe: masks credentials)
+    _masked = MONGODB_URI[:15] + "..." + MONGODB_URI[-10:] if len(MONGODB_URI) > 25 else "SHORT/INVALID"
+    print(f"DEBUG: Connecting to MongoDB with URI starting: {_masked}")
+    
+    if 'mongodb+srv' in MONGODB_URI:
+         # For Atlas, the DB name is usually in the URI string
+         mongoengine.connect(host=MONGODB_URI)
+    else:
+         mongoengine.connect(db=MONGODB_NAME, host=MONGODB_URI)
+    print("SUCCESS: Connected to MongoDB")
 except Exception as e:
-    print(f"WARNING: MongoDB connection failed: {e}")
+    print(f"CRITICAL ERROR: MongoDB connection failed: {e}")
     # Don't crash during build-time collectstatic
-    if 'collectstatic' not in str(os.environ.get('RENDER_COMMAND', '')):
-        pass 
+    is_build = any(x in str(os.environ) for x in ['RENDER_COMMAND', 'COLLECTSTATIC'])
+    if not is_build:
+        raise e
 
 # ============================================
 # REST FRAMEWORK — Custom MongoDB JWT Auth
