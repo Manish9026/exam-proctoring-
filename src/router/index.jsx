@@ -22,6 +22,9 @@ const SettingsPage = React.lazy(() => import('../pages/Admin/SettingsPage'));
 
 // Candidate pages
 const CandidateDashboard = React.lazy(() => import('../pages/Candidate/CandidateDashboard'));
+const CandidateExams = React.lazy(() => import('../pages/Candidate/CandidateExams'));
+const CandidateResults = React.lazy(() => import('../pages/Candidate/CandidateResults'));
+const CandidateProfile = React.lazy(() => import('../pages/Candidate/CandidateProfile'));
 
 // Exam pages
 const PreExamVerify = React.lazy(() => import('../pages/Exam/PreExamVerify'));
@@ -115,10 +118,10 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Suspense fallback={<PageLoader />}><CandidateDashboard /></Suspense> },
-      { path: 'exams', element: <Suspense fallback={<PageLoader />}><CandidateDashboard /></Suspense> },
-      { path: 'results', element: <Suspense fallback={<PageLoader />}><CandidateDashboard /></Suspense> },
-      { path: 'profile', element: <Suspense fallback={<PageLoader />}><SettingsPage /></Suspense> },
-      { path: 'settings', element: <Suspense fallback={<PageLoader />}><SettingsPage /></Suspense> },
+      { path: 'exams', element: <Suspense fallback={<PageLoader />}><CandidateExams /></Suspense> },
+      { path: 'results', element: <Suspense fallback={<PageLoader />}><CandidateResults /></Suspense> },
+      { path: 'profile', element: <Suspense fallback={<PageLoader />}><CandidateProfile /></Suspense> },
+      { path: 'settings', element: <Suspense fallback={<PageLoader />}><CandidateProfile /></Suspense> },
     ],
   },
 

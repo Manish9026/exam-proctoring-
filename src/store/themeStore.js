@@ -8,6 +8,7 @@ const useThemeStore = create(
       fontSize: 'medium',
       animationsEnabled: true,
       sidebarCollapsed: false,
+      mobileSidebarOpen: false,
 
       toggleTheme: () => {
         const next = get().theme === 'dark' ? 'light' : 'dark';
@@ -25,6 +26,8 @@ const useThemeStore = create(
       toggleAnimations: () => set((s) => ({ animationsEnabled: !s.animationsEnabled })),
 
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      toggleMobileSidebar: () => set((s) => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
+      setMobileSidebar: (open) => set({ mobileSidebarOpen: open }),
     }),
     {
       name: 'proctorai-theme',

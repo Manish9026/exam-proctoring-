@@ -43,15 +43,21 @@ const candidateNav = [
 ];
 
 const Sidebar = () => {
-  const { sidebarCollapsed, toggleSidebar } = useThemeStore();
+  const { sidebarCollapsed, toggleSidebar, mobileSidebarOpen, setMobileSidebar } = useThemeStore();
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const role = user?.role || 'candidate';
   const navConfig = role === 'admin' ? adminNav : candidateNav;
 
   return (
-    <aside className={`sidebar ${sidebarCollapsed ? 'sidebar--collapsed' : ''}`}>
-      <div className="sidebar__brand">
+    <>
+      {/* Mobile Overlay */}
+      {mobileSidebarOpen && (
+        <div className="sidebar-mobile-overlay" onClick={() => setMobileSidebar(false)} />
+      )}
+
+      <aside className={`sidebar ${sidebarCollapsed ? 'sidebar--collapsed' : ''} ${mobileSidebarOpen ? 'sidebar--mobile-open' : ''}`}>
+        <div className="sidebar__brand">
         <div className="sidebar__logo">
           <Shield size={20} />
         </div>
@@ -67,6 +73,7 @@ const Sidebar = () => {
                 key={item.path}
                 to={item.path}
                 end={item.path === '/admin' || item.path === '/candidate'}
+                onClick={() => setMobileSidebar(false)}
                 className={({ isActive }) =>
                   `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
                 }
@@ -94,27 +101,12 @@ const Sidebar = () => {
 
       <button
         onClick={toggleSidebar}
-        style={{
-          position: 'absolute',
-          right: '-12px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          width: '24px',
-          height: '24px',
-          borderRadius: '50%',
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          zIndex: 10,
-          color: 'var(--text-tertiary)',
-        }}
+        className="sidebar__collapse-toggle"
       >
         {sidebarCollapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>
     </aside>
+    </>
   );
 };
 

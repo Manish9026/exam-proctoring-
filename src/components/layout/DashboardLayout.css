@@ -21,8 +21,13 @@
   margin: 0 auto;
 }
 
-@media (max-width: 768px) {
-  .dashboard-layout__content { margin-left: 0; }
-  .sidebar { transform: translateX(-100%); }
-  .sidebar--open { transform: translateX(0); }
+@media (max-width: 1024px) {
+  .dashboard-layout__content,
+  .dashboard-layout--collapsed .dashboard-layout__content {
+    margin-left: 0;
+  }
+  
+  .dashboard-layout__main {
+    padding: var(--space-4);
+  }
 }

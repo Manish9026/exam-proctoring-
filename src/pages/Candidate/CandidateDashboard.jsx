@@ -116,7 +116,7 @@ const CandidateDashboard = () => {
           <Card>
             <Card.Header>
               <Card.Title subtitle="Click an exam to start verification">Available Exams</Card.Title>
-              <Badge variant="primary">{exams.length}</Badge>
+              <Button variant="ghost" size="xs" onClick={() => navigate('/candidate/exams')}>View All</Button>
             </Card.Header>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {exams.length === 0 && (
@@ -171,7 +171,8 @@ const CandidateDashboard = () => {
         <motion.div {...anim(6)}>
           <Card>
             <Card.Header>
-              <Card.Title subtitle="Your exam performance">Results</Card.Title>
+              <Card.Title subtitle="Your exam performance">Recent Results</Card.Title>
+              <Button variant="ghost" size="xs" onClick={() => navigate('/candidate/results')}>View All</Button>
             </Card.Header>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {submitted.length === 0 && (

@@ -1,17 +1,19 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Search, Bell, Moon, Sun, Maximize2 } from 'lucide-react';
+import { Search, Bell, Moon, Sun, Menu } from 'lucide-react';
 import useThemeStore from '../../store/themeStore';
 import './Navbar.css';
 
 const Navbar = () => {
-  const { theme, toggleTheme, sidebarCollapsed } = useThemeStore();
+  const { theme, toggleTheme, sidebarCollapsed, toggleMobileSidebar } = useThemeStore();
   const location = useLocation();
 
   const getPageTitle = () => {
     const segments = location.pathname.split('/').filter(Boolean);
     if (segments.length <= 1) return 'Dashboard';
-    return segments[segments.length - 1]
+    const last = segments[segments.length - 1];
+    if (last === 'candidate') return 'Dashboard';
+    return last
       .split('-')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
@@ -20,6 +22,9 @@ const Navbar = () => {
   return (
     <header className={`navbar ${sidebarCollapsed ? 'navbar--collapsed' : 'navbar--with-sidebar'}`}>
       <div className="navbar__left">
+        <button className="navbar__mobile-toggle" onClick={toggleMobileSidebar}>
+          <Menu size={20} />
+        </button>
         <h1 className="navbar__title">{getPageTitle()}</h1>
       </div>
 

@@ -165,3 +165,56 @@
 .sidebar--collapsed .sidebar__user-info { display: none; }
 .sidebar__user-name { font-size: var(--text-sm); font-weight: var(--font-semibold); }
 .sidebar__user-role { font-size: var(--text-xs); color: var(--text-muted); }
+
+.sidebar__collapse-toggle {
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  color: var(--text-tertiary);
+}
+
+/* Responsive Mobile Sidebar */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px !important;
+    z-index: 1001;
+  }
+  
+  .sidebar--mobile-open {
+    transform: translateX(0);
+    box-shadow: 20px 0 50px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar__collapse-toggle {
+    display: none;
+  }
+
+  .sidebar-mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+  }
+
+  /* Force content visibility on mobile even if collapsed on desktop */
+  .sidebar--collapsed .sidebar__link span:not(.sidebar__link-icon),
+  .sidebar--collapsed .sidebar__brand-text,
+  .sidebar--collapsed .sidebar__section-title,
+  .sidebar--collapsed .sidebar__user-info,
+  .sidebar--collapsed .sidebar__link-badge {
+    display: block !important;
+  }
+}
