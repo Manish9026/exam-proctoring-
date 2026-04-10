@@ -24,7 +24,9 @@ const ExamManagement = () => {
   
   // Detail/Manage View State
   const [selectedExam, setSelectedExam] = useState(null);
-  const [activeTab, setActiveTab] = useState('questions'); // questions, settings
+  const [activeTab, setActiveTab] = useState('questions'); // questions, candidates, settings
+  const [examSessions, setExamSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [addingQuestion, setAddingQuestion] = useState(false);
   const [editingSettings, setEditingSettings] = useState(false);
   
@@ -127,11 +129,30 @@ const ExamManagement = () => {
     }
   };
 
+  const loadSessions = async (examId) => {
+    try {
+      setSessionsLoading(true);
+      const data = await examService.getExamSessions(examId);
+      setExamSessions(data || []);
+    } catch (err) {
+      console.error('Failed to load sessions:', err);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedExam && activeTab === 'candidates') {
+      loadSessions(selectedExam.id);
+    }
+  }, [selectedExam, activeTab]);
+
   const openManage = async (exam) => {
     try {
       setLoading(true);
       const detail = await examService.getExam(exam.id);
       setSelectedExam(detail);
+      setExamSessions([]); // Reset sessions
       setEditFormData({
         title: detail.title, subject: detail.subject, duration_minutes: detail.duration_minutes,
         passing_marks: detail.passing_marks, total_marks: detail.total_marks,
@@ -203,6 +224,12 @@ const ExamManagement = () => {
             style={{ padding: 'var(--space-3) var(--space-4)', background: 'transparent', border: 'none', color: activeTab === 'questions' ? 'var(--primary-400)' : 'var(--text-secondary)', borderBottom: activeTab === 'questions' ? '2px solid var(--primary-400)' : '2px solid transparent', fontWeight: 'var(--font-semibold)' }}
           >
             Questions
+          </button>
+          <button 
+            onClick={() => setActiveTab('candidates')} 
+            style={{ padding: 'var(--space-3) var(--space-4)', background: 'transparent', border: 'none', color: activeTab === 'candidates' ? 'var(--primary-400)' : 'var(--text-secondary)', borderBottom: activeTab === 'candidates' ? '2px solid var(--primary-400)' : '2px solid transparent', fontWeight: 'var(--font-semibold)' }}
+          >
+            Candidates & Results
           </button>
           <button 
             onClick={() => setActiveTab('settings')} 
@@ -278,6 +305,81 @@ const ExamManagement = () => {
               </div>
             </Card>
           </>
+        )}
+
+        {activeTab === 'candidates' && (
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)' }}>
+              <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--font-bold)' }}>Attended Candidates</h3>
+              <Button variant="ghost" size="sm" icon={Search} onClick={() => loadSessions(selectedExam.id)}>Refresh List</Button>
+            </div>
+
+            {sessionsLoading ? (
+               <div style={{ textAlign: 'center', padding: 'var(--space-8)' }}><Loader className="spin" size={24} /></div>
+            ) : examSessions.length === 0 ? (
+               <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--text-tertiary)' }}>No candidates have attended this exam yet.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-primary)' }}>
+                      <th style={{ padding: 'var(--space-3)' }}>Candidate</th>
+                      <th style={{ padding: 'var(--space-3)' }}>Status</th>
+                      <th style={{ padding: 'var(--space-3)' }}>Score</th>
+                      <th style={{ padding: 'var(--space-3)' }}>Progress</th>
+                      <th style={{ padding: 'var(--space-3)' }}>Violations</th>
+                      <th style={{ padding: 'var(--space-3)' }}>Risk</th>
+                      <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {examSessions.map(sess => (
+                      <tr key={sess.id} style={{ borderBottom: '1px solid var(--border-primary)', transition: 'background 0.2s' }}>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                          <div style={{ fontWeight: 'var(--font-bold)' }}>{sess.candidate_name}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sess.candidate_email}</div>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                          <Badge variant={
+                            sess.status === 'submitted' ? 'success' : 
+                            sess.status === 'terminated' ? 'danger' : 
+                            sess.status === 'in_progress' ? 'primary' : 'neutral'
+                          }>{sess.status.toUpperCase()}</Badge>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                          <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--font-bold)' }}>{sess.score}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>out of {selectedExam.total_marks}</div>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                           <div style={{ color: 'var(--text-primary)' }}>{sess.total_answered} / {selectedExam.questions?.length || 0}</div>
+                           <div style={{ width: 60, height: 4, background: 'var(--bg-input)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+                             <div style={{ height: '100%', background: 'var(--primary-400)', width: `${(sess.total_answered / (selectedExam.questions?.length || 1)) * 100}%` }} />
+                           </div>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                          <div style={{ color: sess.violation_count > 0 ? 'var(--danger-400)' : 'var(--text-secondary)', fontWeight: 'var(--font-semibold)' }}>
+                            {sess.violation_count} Flags
+                          </div>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid var(--border-primary)', display: 'flex', alignItems: 'center', justifyCenter: 'center', fontSize: '0.7rem', color: sess.risk_score > 60 ? 'var(--danger-400)' : 'var(--accent-400)', fontWeight: 'bold' }}>
+                              {Math.round(sess.risk_score)}%
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
+                          <a href={`/admin/violations?session=${sess.id}`} style={{ textDecoration: 'none' }}>
+                            <Button variant="ghost" size="sm" icon={Shield}>Audit</Button>
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
         )}
 
         {activeTab === 'settings' && (
