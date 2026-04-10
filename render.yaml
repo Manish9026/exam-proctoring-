@@ -15,6 +15,8 @@
         sync: false # Provide your Atlas URI in Render dashboard
       - key: ALLOWED_HOSTS
         value: "proctor-api.onrender.com,localhost"
+      - key: PYTHON_VERSION
+        value: "3.10.14"
       - key: CORS_ALLOWED_ORIGINS
         value: "https://proctor-app.onrender.com,https://proctor-app-cv7j.onrender.com"
 
