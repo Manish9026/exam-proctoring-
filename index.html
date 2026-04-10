@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ProctorAI — AI-Powered Exam Proctoring System with real-time face detection, risk scoring, and behavioral analysis." />
+    <meta name="theme-color" content="#0a0e1a" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>ProctorAI — AI-Powered Exam Proctoring System</title>
+    <style>
+      /* Prevent FOUC */
+      html { background: #0a0e1a; }
+      body { opacity: 0; transition: opacity 0.3s; }
+      body.loaded { opacity: 1; }
+    </style>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => document.body.classList.add('loaded'));
+      const stored = localStorage.getItem('proctorai-theme');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed?.state?.theme) document.documentElement.setAttribute('data-theme', parsed.state.theme);
+        } catch(e) {}
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
