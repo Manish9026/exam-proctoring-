@@ -112,6 +112,20 @@ const examService = {
     return this.updateSession(sessionId, { status: 'terminated' });
   },
 
+  /** Allow a candidate to retake by resetting the session. */
+  async resetSession(sessionId) {
+    const result = await http.post(`/sessions/${sessionId}/reset/`);
+    cache.invalidatePrefix('sessions:');
+    return result;
+  },
+
+  /** Delete a session record. */
+  async deleteSession(sessionId) {
+    const result = await http.del(`/sessions/${sessionId}/delete/`);
+    cache.invalidatePrefix('sessions:');
+    return result;
+  },
+
   // ==========================================
   // ADMIN — Dashboard Stats
   // ==========================================

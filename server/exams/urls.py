@@ -12,6 +12,8 @@ urlpatterns = [
     # Admin — Sessions
     path('sessions/', views.admin_session_list, name='admin-sessions'),
     path('sessions/<str:session_id>/', views.session_detail, name='session-detail'),
+    path('sessions/<str:session_id>/reset/', views.admin_reset_session, name='session-reset'),
+    path('sessions/<str:session_id>/delete/', views.admin_delete_session, name='session-delete'),
     path('admin/stats/', views.admin_dashboard_stats, name='admin-stats'),
     path('admin/candidates/', views.admin_candidate_list, name='admin-candidates'),
     path('admin/analytics/', views.admin_analytics, name='admin-analytics'),

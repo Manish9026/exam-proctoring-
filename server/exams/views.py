@@ -459,13 +459,12 @@ def admin_candidate_list(request):
     
     data = []
     for c in candidates:
-        sess = ExamSession.objects.filter(candidate_id=c.id)
+        sess = ExamSession.objects.filter(candidate_id=str(c.id))
         avg_risk = sum(s.risk_score for s in sess) / len(sess) if sess else 0
         last_s = sess.order_by('-started_at').first()
         
         status = 'active'
         if avg_risk > 70: status = 'flagged'
-        # Add actual user status if managed in model
         
         data.append({
             'id': str(c.id),
@@ -474,9 +473,45 @@ def admin_candidate_list(request):
             'exams': len(sess),
             'avgRisk': round(avg_risk),
             'status': status,
-            'lastExam': last_s.started_at.strftime('%Y-%m-%d') if last_s else 'N/A'
+            'lastExam': last_s.started_at.strftime('%Y-%m-%d') if (last_s and last_s.started_at) else 'N/A'
         })
     return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_reset_session(request, session_id):
+    """POST /api/sessions/{session_id}/reset/ — allow candidate to retake."""
+    try:
+        session = ExamSession.objects.get(id=session_id)
+    except ExamSession.DoesNotExist:
+        return Response({'error': 'Session not found'}, status=404)
+    
+    # Reset session for retake
+    session.status = 'not_started'
+    session.score = 0
+    session.correct_answers = 0
+    session.total_answered = 0
+    session.risk_score = 0
+    session.violation_count = 0
+    session.answers = []
+    session.submitted_at = None
+    session.started_at = None
+    session.save()
+    
+    return Response({'message': 'Session reset successfully. Candidate can now retake this exam.'})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminUser])
+def admin_delete_session(request, session_id):
+    """DELETE /api/sessions/{session_id}/ — remove session completely."""
+    try:
+        session = ExamSession.objects.get(id=session_id)
+        session.delete()
+        return Response({'message': 'Session deleted.'}, status=204)
+    except ExamSession.DoesNotExist:
+        return Response({'error': 'Session not found'}, status=404)
 
 
 @api_view(['GET'])
