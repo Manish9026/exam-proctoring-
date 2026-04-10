@@ -468,7 +468,7 @@ def admin_candidate_list(request):
         
         data.append({
             'id': str(c.id),
-            'name': c.get_full_name() or c.username,
+            'name': c.full_name,
             'email': c.email,
             'exams': len(sess),
             'avgRisk': round(avg_risk),

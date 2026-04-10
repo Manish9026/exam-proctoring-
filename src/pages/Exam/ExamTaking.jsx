@@ -39,13 +39,24 @@ const ExamTaking = () => {
   const [terminalStatus, setTerminalStatus] = useState(null); // 'terminated' | 'time_out'
   const [countdown, setCountdown] = useState(15);
   const [latestViolation, setLatestViolation] = useState(null);
+  
+  // Mobile & Camera States
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 1024);
+  const [cameraMode, setCameraMode] = useState('user'); // 'user' (front) or 'environment' (back)
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+
   const tickCount = useRef(0);
   const countdownTimerRef = useRef(null);
 
-  // 1. Initialize Exam
+  // 1. Initialize Exam & Devices
   useEffect(() => {
     const init = async () => {
       try {
+        // Check for multiple cameras
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        setHasMultipleCameras(videoDevices.length > 1);
+
         let ex = exam;
         if (!ex) {
           ex = await examService.getCandidateExam(examId);
@@ -61,6 +72,17 @@ const ExamTaking = () => {
           sess = await examService.startExam(examId);
         }
         setSession(sess);
+        
+        // Restore previous answers if any
+        if (sess.answers && sess.answers.length > 0) {
+          const restored = {};
+          sess.answers.forEach(a => {
+            const qObj = ex.questions[a.question_index];
+            if (qObj) restored[qObj.id] = a.selected_answer;
+          });
+          setAnswers(restored);
+        }
+
         setLoading(false);
       } catch (err) {
         console.error('Init failed:', err);
@@ -68,6 +90,10 @@ const ExamTaking = () => {
       }
     };
     init();
+
+    const handleResize = () => setSidebarOpen(window.innerWidth > 1024);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, [examId]);
 
   // Handle auto-termination countdown
@@ -357,24 +383,54 @@ const ExamTaking = () => {
      });
   }, [canvasDetections]);
 
-  // 6. Interactions
-  const handleAnswer = (qid, val) => setAnswers(prev => ({ ...prev, [qid]: val }));
-  const toggleFlag = (qid) => {
+  // 6. Interactions (Isolated & Persistent)
+  const handleAnswer = async (qid, val) => {
+    // 1. Update UI immediately
+    setAnswers(prev => ({ ...prev, [qid]: val }));
+    
+    // 2. Sync to Database (Isolation)
+    try {
+      if (session) {
+        await examService.submitAnswer(session.id, {
+          question_index: questions.findIndex(ques => ques.id === qid),
+          selected_answer: val,
+          is_flagged: flagged.has(qid)
+        });
+      }
+    } catch (err) {
+      console.warn('Answer sync failed, will retry on submission or next answer');
+    }
+  };
+
+  const toggleFlag = async (qid) => {
+    const isNowFlagged = !flagged.has(qid);
+    
     setFlagged(prev => {
       const next = new Set(prev);
       if (next.has(qid)) next.delete(qid); else next.add(qid);
       return next;
     });
+
+    // Save flag state
+    try {
+      if (session && answers[qid]) {
+        await examService.submitAnswer(session.id, {
+          question_index: questions.findIndex(ques => ques.id === qid),
+          selected_answer: answers[qid],
+          is_flagged: isNowFlagged
+        });
+      }
+    } catch (e) {}
   };
 
   const handleSubmit = async () => {
-    if (!window.confirm('Submit exam?')) return;
+    if (!window.confirm('Submit exam? All your answers have been auto-saved.')) return;
     setSubmitting(true);
     try {
-      await examService.submitExam(session.id, answers);
+      await examService.submitExam(session.id);
       navigate('/candidate', { state: { msg: 'Exam completed successfully' } });
     } catch (err) {
-      alert('Failed to submit exam');
+      alert('Failed to final submit exam. Please try again.');
       setSubmitting(false);
     }
   };
@@ -385,6 +441,10 @@ const ExamTaking = () => {
     const m = Math.floor((sec % 3600) / 60);
     const s = sec % 60;
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const toggleCamera = () => {
+    setCameraMode(prev => prev === 'user' ? 'environment' : 'user');
   };
 
   if (loading || !questions.length) {
@@ -400,7 +460,7 @@ const ExamTaking = () => {
   const answeredCount = Object.keys(answers).length;
 
   return (
-    <div className="exam-layout">
+    <div className={`exam-layout ${!sidebarOpen ? 'is-sidebar-collapsed' : ''}`}>
       {/* Dynamic Security Overlays (Termination/Timeout) */}
       <AnimatePresence>
         {terminalStatus && (
@@ -443,29 +503,13 @@ const ExamTaking = () => {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Dynamic Security Toast */}
-      <AnimatePresence mode="wait">
-        {latestViolation && (
-          <motion.div 
-            initial={{ y: -50, opacity: 0 }} 
-            animate={{ y: 0, opacity: 1 }} 
-            exit={{ y: -50, opacity: 0 }} 
-            className="exam-security-toast"
-          >
-            <div className="exam-security-toast__icon">
-              <AlertTriangle size={20} />
-            </div>
-            <div className="exam-security-toast__content">
-              <span className="exam-security-toast__title">AI Security Alert</span>
-              <p>{latestViolation.description}</p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+      <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        {sidebarOpen ? <X size={20}/> : <Shield size={20}/>}
+      </button>
 
       {/* Main Examination Dashboard */}
       <main className="exam-main">
-        {/* Superior Header */}
         <header className="exam-header">
           <div className="exam-header__left">
             <div className="exam-header__badge">
@@ -477,11 +521,11 @@ const ExamTaking = () => {
 
           <div className="exam-header__right">
             <div className={`exam-timer ${timeLeft < 300 ? 'exam-timer--urgent' : ''}`}>
-              <Clock size={18} />
+              <Clock size={16} />
               <span>{formatTime(timeLeft)}</span>
             </div>
             <Button variant="primary" size="sm" onClick={handleSubmit} isLoading={submitting}>
-              Finish Exam
+              Submit
             </Button>
           </div>
         </header>
@@ -500,19 +544,19 @@ const ExamTaking = () => {
           <AnimatePresence mode="wait">
             <motion.div 
               key={currentQ}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
               className="exam-question-card"
             >
               <div className="exam-question-card__header">
-                <Badge variant="neutral">Question {currentQ + 1} of {questions.length}</Badge>
+                <Badge variant="neutral">Q{currentQ + 1} / {questions.length}</Badge>
                 <button 
                   className={`exam-question-flag ${flagged.has(q.id) ? 'is-flagged' : ''}`}
                   onClick={() => toggleFlag(q.id)}
                 >
-                  <Flag size={16} fill={flagged.has(q.id) ? "currentColor" : "none"} />
-                  <span>{flagged.has(q.id) ? 'Flagged' : 'Flag for review'}</span>
+                  <Flag size={14} fill={flagged.has(q.id) ? "currentColor" : "none"} />
+                  <span>{flagged.has(q.id) ? 'Flagged' : 'Review'}</span>
                 </button>
               </div>
 
@@ -523,14 +567,12 @@ const ExamTaking = () => {
                   q[`option_${opt.toLowerCase()}`] && (
                     <motion.button
                       key={opt}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
+                      whileTap={{ scale: 0.98 }}
                       className={`exam-option-card ${answers[q.id] === opt ? 'is-selected' : ''}`}
                       onClick={() => handleAnswer(q.id, opt)}
                     >
                       <span className="exam-option-indicator">{opt}</span>
                       <span className="exam-option-content">{q[`option_${opt.toLowerCase()}`]}</span>
-                      {answers[q.id] === opt && <motion.div layoutId="check" className="exam-option-check"><Shield size={12} /></motion.div>}
                     </motion.button>
                   )
                 ))}
@@ -542,109 +584,101 @@ const ExamTaking = () => {
         {/* Footer Navigation */}
         <footer className="exam-footer">
           <Button 
-            variant="outline" 
+            variant="ghost" 
+            size="sm"
             onClick={() => setCurrentQ(prev => Math.max(0, prev - 1))}
             disabled={currentQ === 0}
-          >
-            <ChevronLeft size={18} /> Previous
-          </Button>
-
-          <div className="exam-footer__info">
-            {answeredCount} of {questions.length} attempted
-          </div>
+            icon={ChevronLeft}
+          >Prev</Button>
 
           <Button 
             variant="primary" 
+            size="sm"
             onClick={() => currentQ === questions.length - 1 ? handleSubmit() : setCurrentQ(prev => prev + 1)}
           >
-            {currentQ === questions.length - 1 ? 'Final Submission' : 'Next Question'}
-            <ChevronRight size={18} />
+            {currentQ === questions.length - 1 ? 'Finish' : 'Next'}
+            <ChevronRight size={16} />
           </Button>
         </footer>
       </main>
 
       {/* Surveillance Sidebar */}
-      <aside className="exam-sidebar">
-        <section className="exam-proctor-module">
-          <div className="exam-hud">
-            <Webcam 
-              ref={webcamRef} 
-              audio={false} 
-              screenshotFormat="image/jpeg" 
-              videoConstraints={{ width: 320, height: 240 }} 
-              className="exam-hud__video"
-            />
-            <canvas ref={canvasRef} className="exam-hud__canvas" />
-            
-            <div className={`exam-hud__vignette ${riskScore > 60 ? 'is-critical' : ''}`} />
-            <div className="exam-hud__scanning-line" />
-            
-            <div className="exam-hud__status">
-              <div className={`status-dot ${isConnected ? 'is-online' : 'is-error'}`} />
-              <span>{isConnected ? 'LIVE' : 'OFFLINE'}</span>
-            </div>
-          </div>
-
-          <div className="exam-security-stats">
-            <div className="security-stat">
-              <span className="security-stat__label">Security Index</span>
-              <div className="security-stat__bar">
-                <motion.div 
-                  className={`security-stat__fill security-stat__fill--${riskScore > 60 ? 'danger' : 'safe'}`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${riskScore}%` }}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.aside 
+            initial={{ x: 280 }}
+            animate={{ x: 0 }}
+            exit={{ x: 280 }}
+            className="exam-sidebar"
+          >
+            <section className="exam-proctor-module">
+              <div className="exam-hud">
+                <Webcam 
+                  ref={webcamRef} 
+                  audio={false} 
+                  screenshotFormat="image/jpeg" 
+                  videoConstraints={{ 
+                    width: 320, 
+                    height: 240, 
+                    facingMode: cameraMode 
+                  }} 
+                  className="exam-hud__video"
                 />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="security-stat__value">
-                  {riskScore}%
-                  <motion.span 
-                    key={lastSync}
-                    initial={{ scale: 1.5, opacity: 1 }}
-                    animate={{ scale: 1, opacity: 0.3 }}
-                    style={{ color: '#10b981', marginLeft: '6px', fontSize: '0.8rem' }}
-                  >●</motion.span>
-                </span>
-                <span style={{ fontSize: '0.6rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {isConnected ? 'Telemetry Stable' : 'Syncing...'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
+                <canvas ref={canvasRef} className="exam-hud__canvas" />
+                
+                {hasMultipleCameras && (
+                  <button className="camera-switch-btn" onClick={toggleCamera}>
+                    <Camera size={14} />
+                  </button>
+                )}
 
-        <section className="exam-nav-module">
-          <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8' }}>Navigation</span>
-            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{answeredCount}/{questions.length} Done</span>
-          </header>
-          <div className="exam-palette">
-            {questions.map((qItem, idx) => {
-              const isAnswered = !!answers[qItem.id];
-              const isFlagged = flagged.has(qItem.id);
-              const isCurrent = idx === currentQ;
-              
-              return (
-                <button 
-                  key={qItem.id}
-                  onClick={() => setCurrentQ(idx)}
-                  className={`exam-palette__item ${isCurrent ? 'is-current' : ''} ${isAnswered ? 'is-answered' : ''} ${isFlagged ? 'is-flagged' : ''}`}
-                >
-                  {idx + 1}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                <div className="exam-hud__status">
+                  <div className={`status-dot ${isConnected ? 'is-online' : 'is-error'}`} />
+                  <span>{isConnected ? 'SECURE' : 'CONNECTING'}</span>
+                </div>
+              </div>
 
-        <div style={{ marginTop: 'auto', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
-           <p style={{ fontSize: '0.7rem', color: '#64748b', textAlign: 'center' }}>
-             Proctor monitoring active.<br/>Session ID: {session?.id?.slice(-8)}
-           </p>
-        </div>
-      </aside>
+              <div className="exam-security-stats">
+                <div className="security-stat">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span className="security-stat__label">Integrity Index</span>
+                    <span className="security-stat__value">{100 - Math.round(riskScore)}%</span>
+                  </div>
+                  <div className="security-stat__bar">
+                    <motion.div 
+                      className={`security-stat__fill security-stat__fill--${riskScore > 60 ? 'danger' : 'safe'}`}
+                      animate={{ width: `${100 - riskScore}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="exam-nav-module">
+              <div className="exam-palette">
+                {questions.map((qItem, idx) => {
+                  const isAnswered = !!answers[qItem.id];
+                  const isFlagged = flagged.has(qItem.id);
+                  const isCurrent = idx === currentQ;
+                  
+                  return (
+                    <button 
+                      key={qItem.id}
+                      onClick={() => setCurrentQ(idx)}
+                      className={`exam-palette__item ${isCurrent ? 'is-current' : ''} ${isAnswered ? 'is-answered' : ''} ${isFlagged ? 'is-flagged' : ''}`}
+                    >
+                      {idx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </motion.aside>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
 
 export default ExamTaking;
