@@ -9,6 +9,8 @@
     envVars:
       - key: MPLCONFIGDIR
         value: "/tmp/matplotlib"
+      - key: YOLO_CONFIG_DIR
+        value: "/tmp/Ultralytics"
       - key: DEBUG
         value: "False"
       - key: SECRET_KEY
