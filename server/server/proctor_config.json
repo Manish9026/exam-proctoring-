@@ -1,4 +1,5 @@
 {
+    "STARTUP_GRACE_PERIOD": 10,
     "AUTO_WARNING_THRESHOLD": 50,
     "AUTO_TERMINATE_THRESHOLD": 95,
     "MAX_TAB_SWITCHES": 5,
@@ -7,7 +8,7 @@
         "face_missing": 15,
         "multiple_faces": 25,
         "face_mismatch": 20,
-        "phone_detected": 10,
+        "phone_detected": 40,
         "object_detected": 30,
         "looking_away": 10,
         "audio_detected": 15,
@@ -18,8 +19,9 @@
         "blur_window": 10
     },
     "DECAY_RATE": 1,
-    "AUDIO_THRESHOLD": 45,
-    "IDENTITY_FAIL_TOLERANCE": 2,
-    "FACE_MISS_TOLERANCE": 2,
-    "MULTI_FACE_TOLERANCE": 2
+    "AUDIO_THRESHOLD": 40,
+    "VOICE_DETECTION_SENSITIVITY": 1.5,
+    "IDENTITY_FAIL_TOLERANCE": 5,
+    "FACE_MISS_TOLERANCE": 5,
+    "MULTI_FACE_TOLERANCE": 5
 }

@@ -33,32 +33,46 @@ class IsAdminUser(permissions.BasePermission):
         return request.user.is_authenticated and request.user.role == 'admin'
 
 
-# ============================================
-# CANDIDATE — Realtime Server-Side AI Frame Integration
-# ============================================
-import logging
-import asyncio
+# Global AI instances (Initialized during Django startup on main thread to avoid thread deadlocks)
+_ai_pipeline = None
+_risk_engine = None
 
-try:
-    from .ai.detection_pipeline import PipelineOrchestrator
-    from .ai.risk_engine import RiskManager
-    ai_pipeline = PipelineOrchestrator()
-    risk_engine = RiskManager()
-except Exception as e:
-    ai_pipeline = None
-    risk_engine = None
-    logging.error(f"AI tools load failed: {str(e)}")
+def get_ai_pipeline():
+    global _ai_pipeline
+    if _ai_pipeline is None:
+        try:
+            from .ai.detection_pipeline import PipelineOrchestrator
+            _ai_pipeline = PipelineOrchestrator()
+            logging.info("AI Pipeline initialized successfully.")
+        except Exception as e:
+            import traceback
+            logging.error(f"AI Pipeline initialization failed: {str(e)}\n{traceback.format_exc()}")
+            _ai_pipeline = False 
+    return _ai_pipeline
+
+def get_risk_engine():
+    global _risk_engine
+    if _risk_engine is None:
+        try:
+            from .ai.risk_engine import RiskManager
+            _risk_engine = RiskManager()
+        except Exception:
+            _risk_engine = False
+    return _risk_engine
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def process_frame(request):
     """POST /api/proctoring/frame/"""
+    pipeline = get_ai_pipeline()
+    risk = get_risk_engine()
     data = request.data
+    
     session_id = data.get('session_id')
     b64_frame = data.get('frame')
     tick_count = data.get('tick', 0)
     
-    if not b64_frame or not session_id or not ai_pipeline:
+    if not b64_frame or not session_id or not pipeline:
         return Response({"status": "no_op", "risk_score": 0, "violations": []})
         
     try:
@@ -69,24 +83,24 @@ def process_frame(request):
         logger.warning(f"Frame Reject [Session {session_id}]: Not found or not in_progress")
         return Response({'error': 'Active session not found'}, status=404)
 
-    # Schedule: objects every 3rd tick, identity every 5th tick
-    # Since Django views are synchronous, we run the asyncio task synchronously here.
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    results = loop.run_until_complete(ai_pipeline.process_frame(
+    # Run all detections every frame for maximum accuracy and smoothness
+    # (The 400x300 downscaling we added to the frontend makes this feasible)
+    results = pipeline.process_frame(
         b64_frame, 
-        check_objects=(tick_count % 3 == 0), 
-        check_identity=(tick_count % 5 == 0),
+        check_objects=True, 
+        check_identity=True,
+        check_gaze=True,
         audio_level=data.get('audio_level', 0),
-        reference_id_b64=session.face_snapshot,
+        reference_id_b64=getattr(session, 'face_snapshot', None),
         audio_evidence=data.get('audio_evidence')
-    ))
+    )
     
-    risk_state = risk_engine.evaluate(session_id, results, current_score=session.risk_score)
+    risk_state = risk.evaluate(
+        session_id, 
+        results, 
+        current_score=session.risk_score,
+        is_speech=data.get('is_speech', False)
+    )
     
     # Use LIVE config from file
     config = get_proctor_config()
@@ -119,22 +133,33 @@ def process_frame(request):
     if session.risk_score >= threshold:
         session.status = 'terminated'
         session.termination_reason = f"Auto-terminated: Risk score {session.risk_score} reached threshold."
-        session.save()
-        return Response({
-            "status": "terminated",
-            "risk_score": session.risk_score,
-            "reason": "Security threshold exceeded."
-        }, status=403)
 
     session.save()
+    
+    # Return clean response (exclude heavy audio/image metadata for HUD performance)
+    clean_violations = [
+        {"type": v["type"], "severity": v["severity"], "detail": v["detail"]} 
+        for v in risk_state['new_violations']
+    ]
 
-    return Response({
-        "status": "success",
+    response_data = {
+        "status": session.status,
         "risk_score": risk_state['score'],
-        "violations": risk_state['new_violations'],
-        "detections": results,
+        "detections": {
+            "boxes": results["boxes"],
+            "gaze": results["gaze"],
+            "face_count": results["face_count"],
+            "identity": results.get("identity")
+        },
+        "violations": clean_violations,
+        "tick": tick_count,
         "reasons": risk_state['reasons']
-    })
+    }
+
+    if session.status == 'terminated':
+        return Response(response_data, status=403)
+        
+    return Response(response_data)
 
 
 # ============================================

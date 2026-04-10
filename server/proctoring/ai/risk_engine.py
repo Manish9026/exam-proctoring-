@@ -30,7 +30,7 @@ class RiskManager:
             'identity_fail': config.get('IDENTITY_FAIL_TOLERANCE', 2),
         }
 
-    def evaluate(self, session_id: str, signals: dict, current_score: float = 0):
+    def evaluate(self, session_id: str, signals: dict, current_score: float = 0, is_speech: bool = False):
         # Hot-reload config for immediate effect
         self.load_config()
         
@@ -104,13 +104,16 @@ class RiskManager:
             state['identity_fail_streak'] = 0
             
         if signals.get('audio_level', 0) > self.AUDIO_THRESHOLD:
-            score += self.WEIGHTS.get('audio_detected', 5) 
-            reasons.append("High audio")
-            new_violations.append({
-                'type': 'audio_detected', 
-                'severity': 'medium', 
-                'detail': 'High decibel noise detected.'
-            })
+            # More advanced check: only penalize if it's likely speech OR if it's extremely loud
+            # handled by VOICE_DETECTION_SENSITIVITY logic in frontend
+            if is_speech or signals.get('audio_level', 0) > (self.AUDIO_THRESHOLD * 1.5):
+                score += self.WEIGHTS.get('audio_detected', 5) 
+                reasons.append("Suspicious vocal activity" if is_speech else "High noise level")
+                new_violations.append({
+                    'type': 'audio_detected', 
+                    'severity': 'high' if is_speech else 'medium', 
+                    'detail': 'Suspicious voice activity detected.' if is_speech else 'High decibel noise detected.'
+                })
 
         # --- Global Evidence Attachment ---
         # Attach the 15s audio snapshot to EVERY violation found in this frame
@@ -124,9 +127,8 @@ class RiskManager:
         if not new_violations:
             score = max(0, score - self.DECAY_RATE) 
 
-        # Hard Ceiling
-        score = min(score, 100)
-        
+        # Final Score Calculation (No hard ceiling here to maintain consistency with violation sums)
+        # The UI will handle capping the visual progress bar at 100%
         return {
             "score": score,
             "new_violations": new_violations,

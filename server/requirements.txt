@@ -14,3 +14,12 @@ pymongo
 certifi
 werkzeug
 PyJWT
+deepface
+tf-keras
+tensorflow-cpu
+pandas
+flask
+tqdm
+requests
+gdown
+Pillow
