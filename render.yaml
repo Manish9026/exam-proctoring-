@@ -5,8 +5,10 @@
     plan: free
     env: python
     buildCommand: ./server/build.sh
-    startCommand: gunicorn server.wsgi:application --chdir server
+    startCommand: gunicorn server.wsgi:application --chdir server --timeout 120 --workers 1 --worker-class sync
     envVars:
+      - key: MPLCONFIGDIR
+        value: "/tmp/matplotlib"
       - key: DEBUG
         value: "False"
       - key: SECRET_KEY

@@ -13,6 +13,15 @@ logger = logging.getLogger(__name__)
 # This prevents Windows deadlocks during module import phase.
 
 import threading
+import torch
+
+# Patch for YOLO/PyTorch security changes (weights_only=True)
+try:
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        import ultralytics.nn.tasks
+        torch.serialization.add_safe_globals([ultralytics.nn.tasks.DetectionModel])
+except:
+    pass
 
 class Models:
     _instance = None
@@ -82,18 +91,22 @@ class Models:
                         logger.error(f"OpenCV Cascade load failed: {e}")
                     
                     # 4. Load DeepFace (Biometric Verification)
+                    # NOTE: DeepFace takes ~400MB RAM. Disable for low-resource cloud (Render Free)
                     instance.deepface_ready = False
-                    try:
-                        print("[DEBUG] AI Loading: Initiating DeepFace (VGG-Face)...")
-                        from deepface import DeepFace
-                        # Trigger a dummy call to ensure model is in memory
-                        # We use a tiny blank image to "warm" the model
-                        blank_img = np.zeros((224, 224, 3), dtype=np.uint8)
-                        DeepFace.represent(blank_img, model_name='VGG-Face', enforce_detection=False, detector_backend='skip')
-                        instance.deepface_ready = True
-                        print("[DEBUG] AI Loading: DeepFace Biometrics ready.")
-                    except Exception as e:
-                        logger.error(f"DeepFace Initialization failed: {e}")
+                    if os.environ.get("RENDER") == "true" or os.environ.get("AI_LITE_MODE") == "true":
+                        print("[DEBUG] AI Loading: CLOUD LITE MODE active. Skipping DeepFace initialization to save memory.")
+                    else:
+                        try:
+                            print("[DEBUG] AI Loading: Initiating DeepFace (VGG-Face)...")
+                            from deepface import DeepFace
+                            # Trigger a dummy call to ensure model is in memory
+                            # We use a tiny blank image to "warm" the model
+                            blank_img = np.zeros((224, 224, 3), dtype=np.uint8)
+                            DeepFace.represent(blank_img, model_name='VGG-Face', enforce_detection=False, detector_backend='skip')
+                            instance.deepface_ready = True
+                            print("[DEBUG] AI Loading: DeepFace Biometrics ready.")
+                        except Exception as e:
+                            logger.error(f"DeepFace Initialization failed: {e}")
                     
                     cls._instance = instance
                     
