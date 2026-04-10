@@ -73,13 +73,23 @@ DATABASES = {
     }
 }
 
-# ============================================
 # MongoDB — ALL application data lives here
 # ============================================
 import mongoengine
 MONGODB_NAME = os.getenv('MONGODB_NAME', 'proctorai')
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb://127.0.0.1:27017/proctorai')
-mongoengine.connect(db=MONGODB_NAME, host=MONGODB_URI)
+MONGODB_URI = os.getenv('MONGODB_URI', '').strip()
+
+# Fallback for local dev if MONGODB_URI is missing
+if not MONGODB_URI:
+    MONGODB_URI = 'mongodb://127.0.0.1:27017/proctorai'
+
+try:
+    mongoengine.connect(db=MONGODB_NAME, host=MONGODB_URI)
+except Exception as e:
+    print(f"WARNING: MongoDB connection failed: {e}")
+    # Don't crash during build-time collectstatic
+    if 'collectstatic' not in str(os.environ.get('RENDER_COMMAND', '')):
+        pass 
 
 # ============================================
 # REST FRAMEWORK — Custom MongoDB JWT Auth
