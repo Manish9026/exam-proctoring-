@@ -177,7 +177,7 @@ class PipelineOrchestrator:
             return result
         except Exception as e:
             logger.error(f"Pipeline Critical Failure: {e}")
-            return {"face_count": 0, "gaze": "center", "error": str(e)}
+            return {"face_count": 0, "gaze": "center", "boxes": [], "error": str(e)}
 
     def _calculate_gaze(self, face_landmarks):
         nose_x = face_landmarks.landmark[1].x
