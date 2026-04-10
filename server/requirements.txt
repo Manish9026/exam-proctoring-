@@ -1,0 +1,14 @@
+django
+djangorestframework
+django-cors-headers
+mongoengine
+python-dotenv
+ultralytics
+mediapipe
+numpy
+opencv-python-headless
+whitenoise
+gunicorn
+uvicorn
+pymongo
+certifi

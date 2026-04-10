@@ -46,12 +46,30 @@ The system behavior is managed via a hot-reloadable JSON file. Updates take effe
 - `GET /api/proctoring/config/`: Remote system configuration (Admin only).
 - `GET /api/proctoring/live/`: Real-time monitoring feed.
 
-## 🚢 Deployment Checklist
-1. [ ] Set `DEBUG=False` in `server/server/settings.py`.
-2. [ ] Configure `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`.
-3. [ ] Provision SSL certificates (HTTPS is **mandatory** for camera/mic access).
-4. [ ] Configure production-grade WSGI/ASGI server (e.g., Gunicorn/Uvicorn).
-5. [ ] Set up a Reverse Proxy (Nginx) for static file serving and load balancing.
+## 🚀 Deploying to Render
+This project is configured for automated deployment via **Render Blueprints**.
+
+### 1. Requirements
+- A [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster (Free tier is fine).
+- A GitHub repository containing this project.
+
+### 2. Steps to Deploy
+1. Log in to your [Render Dashboard](https://dashboard.render.com).
+2. Click **New +** and select **Blueprint**.
+3. Connect your GitHub repository.
+4. Render will detect the `render.yaml` file and prepare two services:
+   - `proctor-api` (Web Service)
+   - `proctor-app` (Static Site)
+5. **Environment Variables**:
+   - In the `proctor-api` settings, provide your `MONGODB_URI` from Atlas.
+   - Update `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` with your actual Render URLs.
+6. Click **Apply**.
+
+### 3. Build Configuration
+- **Backend Build**: `./server/build.sh`
+- **Backend Start**: `gunicorn server.wsgi:application --chdir server`
+- **Frontend Build**: `npm run build`
+- **Frontend Publish**: `dist`
 
 ---
 
