@@ -83,6 +83,9 @@ DATABASES = {
 import mongoengine
 MONGODB_NAME = os.getenv('MONGODB_NAME', 'proctorai')
 MONGODB_URI = os.getenv('MONGODB_URI', '').strip(' "\'')
+# Fix for common copy-paste error where user includes "MONGODB_URI=" in the value
+if MONGODB_URI.startswith('MONGODB_URI='):
+    MONGODB_URI = MONGODB_URI.replace('MONGODB_URI=', '').strip(' "\'')
 
 # Fallback for local dev if MONGODB_URI is missing
 if not MONGODB_URI:
